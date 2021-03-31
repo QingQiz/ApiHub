@@ -1,5 +1,7 @@
 using System;
 using System.IO;
+using System.Linq;
+using ApiHub.ApplicationAttribute;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
@@ -9,6 +11,7 @@ using ApiHub.EntityFrameworkCore;
 using ApiHub.Localization;
 using ApiHub.MultiTenancy;
 using Microsoft.OpenApi.Models;
+using Swashbuckle.AspNetCore.SwaggerGen;
 using Volo.Abp;
 using Volo.Abp.Account.Web;
 using Volo.Abp.AspNetCore.Authentication.JwtBearer;
@@ -155,9 +158,7 @@ namespace ApiHub.Web
                 {
                     options.SwaggerDoc("v1", new OpenApiInfo { Title = "ApiHub API", Version = "v1" });
                     options.DocInclusionPredicate((docName, description) =>
-                    {
-                        return false;
-                    });
+                        description.CustomAttributes().OfType<IncludeInSwaggerAttribute>().Any());
                     options.CustomSchemaIds(type => type.FullName);
                 }
             );
