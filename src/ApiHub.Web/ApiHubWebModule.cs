@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using ApiHub.ApplicationAttribute;
@@ -10,6 +11,7 @@ using Microsoft.Extensions.Hosting;
 using ApiHub.EntityFrameworkCore;
 using ApiHub.Localization;
 using ApiHub.MultiTenancy;
+using AspNet.Security.OAuth.GitHub;
 using Microsoft.OpenApi.Models;
 using Swashbuckle.AspNetCore.SwaggerGen;
 using Volo.Abp;
@@ -49,6 +51,7 @@ namespace ApiHub.Web
         )]
     public class ApiHubWebModule : AbpModule
     {
+        private IConfiguration _configuration;
         public override void PreConfigureServices(ServiceConfigurationContext context)
         {
             context.Services.PreConfigure<AbpMvcDataAnnotationsLocalizationOptions>(options =>
@@ -66,12 +69,13 @@ namespace ApiHub.Web
 
         public override void ConfigureServices(ServiceConfigurationContext context)
         {
+            // the execution of this function is before `this.OnApplicationInitialization`
             var hostingEnvironment = context.Services.GetHostingEnvironment();
-            var configuration = context.Services.GetConfiguration();
+            _configuration = context.Services.GetConfiguration();
 
-            ConfigureUrls(configuration);
+            ConfigureUrls(_configuration);
             ConfigureBundles();
-            ConfigureAuthentication(context, configuration);
+            ConfigureAuthentication(context, _configuration);
             ConfigureAutoMapper();
             ConfigureVirtualFileSystem(hostingEnvironment);
             ConfigureLocalizationServices();
@@ -91,13 +95,13 @@ namespace ApiHub.Web
         {
             Configure<AbpBundlingOptions>(options =>
             {
-                options.StyleBundles.Configure(
-                    BasicThemeBundles.Styles.Global,
-                    bundle =>
-                    {
-                        bundle.AddFiles("/global-styles.css");
-                    }
-                );
+                // options.StyleBundles.Configure(
+                //     BasicThemeBundles.Styles.Global,
+                //     bundle =>
+                //     {
+                //         bundle.AddFiles("/global-styles.css");
+                //     }
+                // );
             });
         }
 
@@ -106,9 +110,14 @@ namespace ApiHub.Web
             context.Services.AddAuthentication()
                 .AddJwtBearer(options =>
                 {
-                    options.Authority = configuration["AuthServer:Authority"];
+                    options.Authority = configuration["App:SelfUrl"];
                     options.RequireHttpsMetadata = Convert.ToBoolean(configuration["AuthServer:RequireHttpsMetadata"]);
                     options.Audience = "ApiHub";
+                })
+                .AddGitHub(options =>
+                {
+                    options.ClientId = _configuration["AuthServer:OAuthClientId"];
+                    options.ClientSecret = _configuration["AuthServer:OAuthClientSecret"];
                 });
         }
 
@@ -158,8 +167,31 @@ namespace ApiHub.Web
                 {
                     options.SwaggerDoc("v1", new OpenApiInfo { Title = "ApiHub API", Version = "v1" });
                     options.DocInclusionPredicate((docName, description) =>
-                        description.CustomAttributes().OfType<IncludeInSwaggerAttribute>().Any());
+                    {
+                        var attr = description
+                            .CustomAttributes()
+                            .OfType<IncludeInSwaggerAttribute>()
+                            .ToList();
+
+                        return attr.Any() && attr.All(a => a.IsEnable);
+                    });
                     options.CustomSchemaIds(type => type.FullName);
+                    options.AddSecurityDefinition("oauth2", new OpenApiSecurityScheme
+                    {
+                        Type = SecuritySchemeType.OAuth2,
+                        Flows = new OpenApiOAuthFlows
+                        {
+                            Implicit = new OpenApiOAuthFlow
+                            {
+                                AuthorizationUrl = new Uri(GitHubAuthenticationDefaults.AuthorizationEndpoint),
+                                TokenUrl = new Uri(GitHubAuthenticationDefaults.TokenEndpoint),
+                                Scopes = new Dictionary<string, string>
+                                {
+                                    {"read:user", "read profile information"}
+                                }
+                            }
+                        },
+                    });
                 }
             );
         }
@@ -200,6 +232,9 @@ namespace ApiHub.Web
             {
                 options.DefaultModelsExpandDepth(-1);
                 options.SwaggerEndpoint("/swagger/v1/swagger.json", "ApiHub API");
+                options.OAuthClientId(_configuration["AuthServer:OAuthClientId"]);
+                options.OAuthClientSecret(_configuration["AuthServer:OAuthClientSecret"]);
+                options.OAuth2RedirectUrl(_configuration["App:SelfUrl"] + _configuration["AuthServer:RedirectUrl"]);
             });
             app.UseAuditing();
             app.UseAbpSerilogEnrichers();
