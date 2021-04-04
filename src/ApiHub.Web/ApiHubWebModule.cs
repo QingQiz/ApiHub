@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using ApiHub.ApplicationAttribute;
@@ -11,7 +10,6 @@ using Microsoft.Extensions.Hosting;
 using ApiHub.EntityFrameworkCore;
 using ApiHub.Localization;
 using ApiHub.MultiTenancy;
-using AspNet.Security.OAuth.GitHub;
 using Microsoft.OpenApi.Models;
 using Swashbuckle.AspNetCore.SwaggerGen;
 using Volo.Abp;
@@ -21,7 +19,6 @@ using Volo.Abp.AspNetCore.Mvc;
 using Volo.Abp.AspNetCore.Mvc.Localization;
 using Volo.Abp.AspNetCore.Mvc.UI.Bundling;
 using Volo.Abp.AspNetCore.Mvc.UI.Theme.Basic;
-using Volo.Abp.AspNetCore.Mvc.UI.Theme.Basic.Bundling;
 using Volo.Abp.AspNetCore.Mvc.UI.Theme.Shared;
 using Volo.Abp.AspNetCore.Serilog;
 using Volo.Abp.Autofac;
@@ -107,17 +104,11 @@ namespace ApiHub.Web
 
         private void ConfigureAuthentication(ServiceConfigurationContext context, IConfiguration configuration)
         {
-            context.Services.AddAuthentication()
-                .AddJwtBearer(options =>
+            context.Services.AddAuthentication().AddJwtBearer(options =>
                 {
                     options.Authority = configuration["App:SelfUrl"];
                     options.RequireHttpsMetadata = Convert.ToBoolean(configuration["AuthServer:RequireHttpsMetadata"]);
                     options.Audience = "ApiHub";
-                })
-                .AddGitHub(options =>
-                {
-                    options.ClientId = _configuration["AuthServer:OAuthClientId"];
-                    options.ClientSecret = _configuration["AuthServer:OAuthClientSecret"];
                 });
         }
 
@@ -176,22 +167,6 @@ namespace ApiHub.Web
                         return attr.Any() && attr.All(a => a.IsEnable);
                     });
                     options.CustomSchemaIds(type => type.FullName);
-                    options.AddSecurityDefinition("oauth2", new OpenApiSecurityScheme
-                    {
-                        Type = SecuritySchemeType.OAuth2,
-                        Flows = new OpenApiOAuthFlows
-                        {
-                            Implicit = new OpenApiOAuthFlow
-                            {
-                                AuthorizationUrl = new Uri(GitHubAuthenticationDefaults.AuthorizationEndpoint),
-                                TokenUrl = new Uri(GitHubAuthenticationDefaults.TokenEndpoint),
-                                Scopes = new Dictionary<string, string>
-                                {
-                                    {"read:user", "read profile information"}
-                                }
-                            }
-                        },
-                    });
                 }
             );
         }
@@ -232,9 +207,6 @@ namespace ApiHub.Web
             {
                 options.DefaultModelsExpandDepth(-1);
                 options.SwaggerEndpoint("/swagger/v1/swagger.json", "ApiHub API");
-                options.OAuthClientId(_configuration["AuthServer:OAuthClientId"]);
-                options.OAuthClientSecret(_configuration["AuthServer:OAuthClientSecret"]);
-                options.OAuth2RedirectUrl(_configuration["App:SelfUrl"] + _configuration["AuthServer:RedirectUrl"]);
             });
             app.UseAuditing();
             app.UseAbpSerilogEnrichers();

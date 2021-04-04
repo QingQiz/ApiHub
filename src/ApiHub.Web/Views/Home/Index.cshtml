@@ -1,0 +1,30 @@
+﻿@using Volo.Abp.Users
+@inject CurrentUser CurrentUser;
+@{
+    ViewBag.Title = "title";
+    Layout = "_Layout";
+}
+
+<div>
+    @foreach (var claim in CurrentUser.GetAllClaims())
+    {
+        <div><code>@claim.Type</code>: <strong>@claim.Value</strong></div>
+    }
+    @if (User?.Identity?.IsAuthenticated ?? false)
+    {
+        <h1>Welcome, @User.Identity.Name</h1>
+
+        <p>
+            @foreach (var claim in Context.User.Claims)
+            {
+                <div><code>@claim.Type</code>: <strong>@claim.Value</strong></div>
+            }
+        </p>
+    }
+
+    else
+    {
+        <h1>Welcome, anonymous</h1>
+        <a class="btn btn-lg btn-success" href="/Api/Login/Github?returnUrl=%2F">Sign in</a>
+    }
+</div>
