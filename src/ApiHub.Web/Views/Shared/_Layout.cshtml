@@ -1,18 +1,24 @@
-﻿<!DOCTYPE html>
-<html lang="en">
+﻿@using Volo.Abp.AspNetCore.Mvc.AntiForgery
+@inject IAbpAntiForgeryManager AbpAntiForgeryManager
+@{
+    var pageTitle = !string.IsNullOrWhiteSpace(ViewBag.Title) ? ViewBag.Title + " / " : "";
+    pageTitle += "ApiHub";
+}
 
+<!DOCTYPE html>
+<html lang="en">
 <head>
-    <meta charset="utf-8"/>
-    <title>
-        title
-    </title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="x-ua-compatible" content="ie=edge">
+
+    <title>@pageTitle</title>
+
+    @await RenderSectionAsync("styles", required: false)
 </head>
 
 <body>
-
-<main class="container">
     @RenderBody()
-</main>
-
+    @await RenderSectionAsync("scripts", false)
 </body>
 </html>

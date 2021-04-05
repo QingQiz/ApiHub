@@ -7,7 +7,8 @@ namespace ApiHub.Web.Controllers
     {
         public ActionResult Index()
         {
-            return View();
+            // return View(CurrentUser);
+            return Redirect("/swagger");
         }
     }
 }

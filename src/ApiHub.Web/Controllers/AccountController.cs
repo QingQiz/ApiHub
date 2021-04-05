@@ -1,31 +1,41 @@
 ﻿using System;
 using System.Threading.Tasks;
-using ApiHub.ApplicationAttribute;
 using Flurl;
 using Flurl.Http;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging;
 using Volo.Abp.AspNetCore.Mvc;
+using Volo.Abp.Identity;
+using IdentityUser = Volo.Abp.Identity.IdentityUser;
 
 namespace ApiHub.Web.Controllers
 {
     public class AccountController : AbpController
     {
-        private const string GithubAuthUri = "https://github.com/login/oauth/authorize";
-        private const string GithubTokenUri = "https://github.com/login/oauth/access_token";
+        public const string GithubAuthUri = "https://github.com/login/oauth/authorize";
+        public const string GithubTokenUri = "https://github.com/login/oauth/access_token";
+        private const string GithubCurrentUserUri = "https://api.github.com/user";
         private readonly string _githubClientId;
         private readonly string _githubClientSecret;
+
+        private IdentityUserManager _userManager;
+        private Volo.Abp.Account.Web.Areas.Account.Controllers.AccountController _accountController;
+        private SignInManager<IdentityUser> _signInManager;
             
 
-        public AccountController(IConfiguration configuration)
+        public AccountController(IConfiguration configuration, IdentityUserManager userManager, Volo.Abp.Account.Web.Areas.Account.Controllers.AccountController accountController, SignInManager<IdentityUser> signInManager)
         {
+            _userManager = userManager;
+            _accountController = accountController;
+            _signInManager = signInManager;
             var configuration1 = configuration;
             _githubClientId = configuration1["AuthServer:OAuthClientId"];
             _githubClientSecret = configuration1["AuthServer:OAuthClientSecret"];
         }
 
-        [HttpGet, Route("/Api/Login/Github")]
+        [HttpGet, Route("/Account/Login/Github")]
         public async Task<ActionResult> LoginViaGithub(string code, string returnUrl)
         {
             if (code.IsNullOrWhiteSpace())
@@ -33,27 +43,58 @@ namespace ApiHub.Web.Controllers
                 return Redirect(GithubAuthUri.SetQueryParams(new
                 {
                     client_id = _githubClientId,
-                    redirect_uri = Url.ActionLink("LoginViaGithub"),
+                    redirect_uri = Url.ActionLink(nameof(LoginViaGithub)),
                     allown_signup = false
                 }));
             }
 
-            var res = await GithubTokenUri.PostJsonAsync(new
+            dynamic authedUserInfo;
+
+            try
             {
-                client_id = _githubClientId,
-                client_secret = _githubClientSecret,
-                code,
-            });
+                var postAction = await GithubTokenUri.PostJsonAsync(new
+                {
+                    client_id = _githubClientId,
+                    client_secret = _githubClientSecret,
+                    code,
+                });
+
+                var token = (await postAction.GetStringAsync()).Split('&')[0].Split('=')[1];
+
+                authedUserInfo = await GithubCurrentUserUri
+                    .WithHeaders(new
+                    {
+                        User_Agent = "FlUrl",  // github api requires a user-agent
+                        Accept = "application/vnd.github.v3+json",
+                        Authorization = "token " + token
+                    }).GetJsonAsync();
+            }
+            catch (FlurlHttpException)
+            {
+                return StatusCode(StatusCodes.Status401Unauthorized);
+                // return RedirectToAction(nameof(LoginViaGithub), new { returnUrl });
+            }
+
+            long userId = authedUserInfo.id;
+
+            if (!ApiHubConsts.AdminGithubAccountId.Contains(userId))
+            {
+                return StatusCode(StatusCodes.Status403Forbidden);
+            }
+
+            var user = await _userManager.FindByNameAsync(userId.ToString());
             
-            Logger.Log(LogLevel.Warning, await res.GetStringAsync());
+            if (user == null)
+            {
+                var newUser = new IdentityUser(Guid.NewGuid(), $"{userId}", $"{userId}@temp.mail.com");
+                
+                await _userManager.CreateAsync(newUser);
+                user = await _userManager.FindByNameAsync(userId.ToString());
+            }
 
-            throw new NotImplementedException();
-        }
+            await _signInManager.SignInAsync(user, true);
 
-        [IncludeInSwagger()]
-        public RedirectResult LoginCallback()
-        {
-            return new("/");
+            return Redirect(returnUrl.IsNullOrEmpty() ? "/" : returnUrl);
         }
     }
 }

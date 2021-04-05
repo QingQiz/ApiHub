@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using ApiHub.ApplicationAttribute;
@@ -9,7 +10,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using ApiHub.EntityFrameworkCore;
 using ApiHub.Localization;
-using ApiHub.MultiTenancy;
+using ApiHub.Web.Controllers;
+using Microsoft.AspNetCore.Http;
 using Microsoft.OpenApi.Models;
 using Swashbuckle.AspNetCore.SwaggerGen;
 using Volo.Abp;
@@ -78,6 +80,11 @@ namespace ApiHub.Web
             ConfigureLocalizationServices();
             ConfigureAutoApiControllers();
             ConfigureSwaggerServices(context.Services);
+
+            context.Services.ConfigureApplicationCookie(options =>
+            {
+                options.LoginPath = "/Account/Login/Github";
+            });
         }
 
         private void ConfigureUrls(IConfiguration configuration)
@@ -104,7 +111,8 @@ namespace ApiHub.Web
 
         private void ConfigureAuthentication(ServiceConfigurationContext context, IConfiguration configuration)
         {
-            context.Services.AddAuthentication().AddJwtBearer(options =>
+            context.Services.AddAuthentication()
+                .AddJwtBearer(options =>
                 {
                     options.Authority = configuration["App:SelfUrl"];
                     options.RequireHttpsMetadata = Convert.ToBoolean(configuration["AuthServer:RequireHttpsMetadata"]);
@@ -167,6 +175,22 @@ namespace ApiHub.Web
                         return attr.Any() && attr.All(a => a.IsEnable);
                     });
                     options.CustomSchemaIds(type => type.FullName);
+                    options.AddSecurityDefinition("oauth2", new OpenApiSecurityScheme
+                    {
+                        Type = SecuritySchemeType.OAuth2,
+                        Flows = new OpenApiOAuthFlows
+                        {
+                            Implicit = new OpenApiOAuthFlow
+                            {
+                                AuthorizationUrl = new Uri(AccountController.GithubAuthUri),
+                                TokenUrl = new Uri(AccountController.GithubTokenUri),
+                                Scopes = new Dictionary<string, string>
+                                {
+                                    {"read:user", "read profile information"}
+                                }
+                            }
+                        },
+                    });
                 }
             );
         }
@@ -188,16 +212,21 @@ namespace ApiHub.Web
                 app.UseErrorPage();
             }
 
+            app.UseCookiePolicy(new CookiePolicyOptions
+            {
+                MinimumSameSitePolicy = SameSiteMode.Lax
+            });
+
             app.UseCorrelationId();
             app.UseVirtualFiles();
             app.UseRouting();
             app.UseAuthentication();
             app.UseJwtTokenMiddleware();
 
-            if (MultiTenancyConsts.IsEnabled)
-            {
-                app.UseMultiTenancy();
-            }
+            // if (MultiTenancyConsts.IsEnabled)
+            // {
+            //     app.UseMultiTenancy();
+            // }
 
             app.UseUnitOfWork();
             app.UseIdentityServer();
@@ -207,6 +236,10 @@ namespace ApiHub.Web
             {
                 options.DefaultModelsExpandDepth(-1);
                 options.SwaggerEndpoint("/swagger/v1/swagger.json", "ApiHub API");
+
+                options.OAuthClientId(_configuration["AuthServer:OAuthClientId"]);
+                options.OAuthClientSecret(_configuration["AuthServer:OAuthClientSecret"]);
+                options.OAuth2RedirectUrl(_configuration["App:SelfUrl"] + _configuration["AuthServer:RedirectUrl"]);
             });
             app.UseAuditing();
             app.UseAbpSerilogEnrichers();

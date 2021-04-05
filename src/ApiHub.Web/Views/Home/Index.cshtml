@@ -1,15 +1,12 @@
-﻿@using Volo.Abp.Users
-@inject CurrentUser CurrentUser;
+﻿@model ICurrentUser
+@using Volo.Abp.Users
 @{
     ViewBag.Title = "title";
     Layout = "_Layout";
 }
 
 <div>
-    @foreach (var claim in CurrentUser.GetAllClaims())
-    {
-        <div><code>@claim.Type</code>: <strong>@claim.Value</strong></div>
-    }
+    @Model.UserName
     @if (User?.Identity?.IsAuthenticated ?? false)
     {
         <h1>Welcome, @User.Identity.Name</h1>
