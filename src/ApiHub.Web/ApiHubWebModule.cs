@@ -13,6 +13,7 @@ using ApiHub.Localization;
 using ApiHub.Web.Controllers;
 using Microsoft.AspNetCore.Http;
 using Microsoft.OpenApi.Models;
+using Swashbuckle.AspNetCore.Filters;
 using Swashbuckle.AspNetCore.SwaggerGen;
 using Volo.Abp;
 using Volo.Abp.Account.Web;
@@ -191,6 +192,7 @@ namespace ApiHub.Web
                             }
                         },
                     });
+                    options.OperationFilter<SecurityRequirementsOperationFilter>();
                 }
             );
         }
@@ -239,7 +241,10 @@ namespace ApiHub.Web
 
                 options.OAuthClientId(_configuration["AuthServer:OAuthClientId"]);
                 options.OAuthClientSecret(_configuration["AuthServer:OAuthClientSecret"]);
-                options.OAuth2RedirectUrl(_configuration["App:SelfUrl"] + _configuration["AuthServer:RedirectUrl"]);
+                options.OAuth2RedirectUrl(_configuration["App:SelfUrl"] + _configuration["AuthServer:RedirectUrl"] + "?returnUrl=/swagger/index.html");
+                    
+
+                options.DocumentTitle = "ApiHub Api";
             });
             app.UseAuditing();
             app.UseAbpSerilogEnrichers();
